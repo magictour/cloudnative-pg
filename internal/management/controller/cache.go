@@ -76,7 +76,7 @@ func (r *InstanceReconciler) reconcileWALArchiveSettingsCache(
 		cluster.Spec.Backup.BarmanObjectStore,
 		os.Environ())
 	if apierrors.IsForbidden(err) {
-		log.Info("backup secret not yet ready, running another reconciliation loop")
+		log.Info("backup credentials don't yet have access permissions. Will retry reconciliation loop")
 		return &ctrl.Result{RequeueAfter: 5 * time.Second}
 	}
 

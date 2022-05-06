@@ -95,6 +95,11 @@ func (r *InstanceReconciler) Reconcile(
 		return reconcile.Result{}, fmt.Errorf("could not fetch Cluster: %w", err)
 	}
 
+	var (
+		shouldRequeue bool
+		nextRequeue   time.Duration = 24 * time.Hour // we'll pick the shortest requeue wait
+	)
+
 	// Print the Cluster
 	contextLogger.Debug("Reconciling Cluster", "cluster", cluster)
 
@@ -103,7 +108,10 @@ func (r *InstanceReconciler) Reconcile(
 
 	// Refresh the cache
 	if res := r.reconcileCacheFromCluster(ctx, cluster); res != nil {
-		return *res, nil
+		shouldRequeue = true
+		if res.RequeueAfter < nextRequeue {
+			nextRequeue = res.RequeueAfter
+		}
 	}
 
 	// Reconcile monitoring section
@@ -185,6 +193,10 @@ func (r *InstanceReconciler) Reconcile(
 
 	if err := r.reconcileDatabases(ctx, cluster); err != nil {
 		return reconcile.Result{}, fmt.Errorf("cannot reconcile database configurations: %w", err)
+	}
+
+	if shouldRequeue {
+		return reconcile.Result{RequeueAfter: nextRequeue}, nil
 	}
 
 	return reconcile.Result{}, nil
