@@ -104,6 +104,11 @@ func (r *InstanceReconciler) Reconcile(
 	// Reconcile PostgreSQL instance parameters
 	r.reconcileInstance(cluster)
 
+	// Reconcile replication slots
+	if err = r.reconcileReplicationSlots(ctx); err != nil {
+		contextLogger.Error(err, "while reconciling replicaiton slot")
+	}
+
 	// Refresh the cache
 	requeue := r.updateCacheFromCluster(ctx, cluster)
 
@@ -1196,4 +1201,25 @@ func (r *InstanceReconciler) refreshPGHBA(ctx context.Context, cluster *apiv1.Cl
 	}
 	// Generate pg_hba.conf file
 	return r.instance.RefreshPGHBA(cluster, ldapBindPassword)
+}
+
+func (r *InstanceReconciler) reconcileReplicationSlots(ctx context.Context) error {
+	contextLogger := log.FromContext(ctx)
+
+	err := r.instance.UpdateReplicationsSlot()
+	if err != nil {
+		contextLogger.Error(err, "updating replication slots")
+		return err
+	}
+
+	if r.instance.ReplicationSlots.Has(r.instance.PodName) {
+		return nil
+	}
+
+	err = r.instance.CreateReplicationSlot(r.instance.PodName)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
