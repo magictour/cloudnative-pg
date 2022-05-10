@@ -511,6 +511,7 @@ imagePullSecrets
 img
 immediateCheckpoint
 inProgress
+inheritFromAzureAD
 inheritFromIAMRole
 init
 initDB
