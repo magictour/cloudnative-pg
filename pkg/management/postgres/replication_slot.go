@@ -70,12 +70,12 @@ slot_type
 FROM pg_replication_slots 
 WHERE NOT temporary AND slot_type = 'physical'
 `)
-	defer func() {
-		_ = rows.Close()
-	}()
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		_ = rows.Close()
+	}()
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
