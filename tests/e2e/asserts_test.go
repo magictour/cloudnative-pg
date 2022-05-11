@@ -2041,11 +2041,13 @@ func AssertPostgresNoPendingRestart(namespace, clusterName string, cmdTimeout ti
 				stdout, _, err := env.ExecCommand(env.Ctx, pod, specs.PostgresContainerName, &cmdTimeout,
 					"psql", "-U", "postgres", "-tAc", "SELECT EXISTS(SELECT 1 FROM pg_settings WHERE pending_restart)")
 				if err != nil {
+					GinkgoWriter.Printf("failed to execute command in pod %v, error is %v \n", pod.Name, err)
 					return false, nil
 				}
 				if strings.Trim(stdout, "\n") == "f" {
 					continue
 				} else {
+					GinkgoWriter.Printf("pending start in pod %v, status is %v\n", pod.Name, strings.Trim(stdout, "\n"))
 					noPendingRestart = false
 					break
 				}
