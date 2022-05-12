@@ -19,6 +19,7 @@ package postgres
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 
 	"github.com/lib/pq"
 )
@@ -29,10 +30,13 @@ type SlotType string
 // SlotTypePhysical represents the physical replication slot
 const SlotTypePhysical = "physical"
 
+const SlotPrefix = "_cnpg_slot_"
+
 // ReplicationSlot represent the unit of a replication slot
 type ReplicationSlot struct {
-	Name string
-	Type SlotType
+	PodName  string   `json:"podName,omitempty"`
+	SlotName string   `json:"slotName,omitempty"`
+	Type     SlotType `json:"type,omitempty"`
 }
 
 // ReplicationSlotList contains a list of replication slot
@@ -40,9 +44,23 @@ type ReplicationSlotList struct {
 	Items []ReplicationSlot
 }
 
-func (rs *ReplicationSlotList) getSlot(slotName string) *ReplicationSlot {
+var serialNumber = regexp.MustCompile(".*([0-9]+)$")
+
+// getSlotName return the slot name based in the current pod name
+func getSlotName(podName string) (string, error) {
+	match := serialNumber.FindAllString(podName, -1)
+	if len(match) != 1 {
+		return "", fmt.Errorf("can't parse podName looking for serial number")
+	}
+	slotName := fmt.Sprintf("%s%s", SlotPrefix, match[0])
+
+	return slotName, nil
+
+}
+
+func (rs *ReplicationSlotList) getSlotByPodName(podName string) *ReplicationSlot {
 	for k, v := range rs.Items {
-		if v.Name == slotName {
+		if v.PodName == podName {
 			return &rs.Items[k]
 		}
 	}
@@ -50,8 +68,8 @@ func (rs *ReplicationSlotList) getSlot(slotName string) *ReplicationSlot {
 }
 
 // Has returns true if the slotName it's found in the current replication slot list
-func (rs *ReplicationSlotList) Has(slotName string) bool {
-	return rs.getSlot(slotName) != nil
+func (rs *ReplicationSlotList) Has(podNAme string) bool {
+	return rs.getSlotByPodName(podNAme) != nil
 }
 
 // TODO compare against the active nodes in the cluster status
@@ -83,7 +101,7 @@ WHERE NOT temporary AND slot_type = 'physical'
 	for rows.Next() {
 		var slot ReplicationSlot
 		err := rows.Scan(
-			&slot.Name,
+			&slot.SlotName,
 			&slot.Type,
 		)
 		if err != nil {
@@ -113,9 +131,14 @@ func (instance *Instance) UpdateReplicationsSlot() error {
 }
 
 // CreateReplicationSlot will create a physical replication slot in the primary instance
-func (instance *Instance) CreateReplicationSlot(slotName string) error {
+func (instance *Instance) CreateReplicationSlot(podName string) error {
 	if isPrimary, _ := instance.IsPrimary(); !isPrimary {
 		return nil
+	}
+
+	slotName, err := getSlotName(podName)
+	if err != nil {
+		return err
 	}
 
 	superUserDB, err := instance.GetSuperUserDB()
@@ -133,17 +156,23 @@ func (instance *Instance) CreateReplicationSlot(slotName string) error {
 
 	instance.ReplicationSlots.Items = append(instance.ReplicationSlots.Items,
 		ReplicationSlot{
-			Name: slotName,
-			Type: SlotTypePhysical,
+			PodName:  podName,
+			SlotName: slotName,
+			Type:     SlotTypePhysical,
 		})
 
 	return nil
 }
 
 // DeleteReplicationSlot drop the specified replication slot in the primary
-func (instance *Instance) DeleteReplicationSlot(slotName string) error {
+func (instance *Instance) DeleteReplicationSlot(podName string) error {
 	if isPrimary, _ := instance.IsPrimary(); !isPrimary {
 		return nil
+	}
+
+	slotName, err := getSlotName(podName)
+	if err != nil {
+		return err
 	}
 
 	superUserDB, err := instance.GetSuperUserDB()
