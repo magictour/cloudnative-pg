@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apiv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	v1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	"github.com/cloudnative-pg/cloudnative-pg/controllers"
 	"github.com/cloudnative-pg/cloudnative-pg/internal/management/utils"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/certs"
@@ -105,8 +106,8 @@ func (r *InstanceReconciler) Reconcile(
 	r.reconcileInstance(cluster)
 
 	// Reconcile replication slots
-	if err = r.reconcileReplicationSlots(ctx); err != nil {
-		contextLogger.Error(err, "while reconciling replicaiton slot")
+	if err = r.reconcileReplicationSlots(ctx, cluster); err != nil {
+		contextLogger.Error(err, "while reconciling replication slot")
 	}
 
 	// Refresh the cache
@@ -1203,23 +1204,29 @@ func (r *InstanceReconciler) refreshPGHBA(ctx context.Context, cluster *apiv1.Cl
 	return r.instance.RefreshPGHBA(cluster, ldapBindPassword)
 }
 
-func (r *InstanceReconciler) reconcileReplicationSlots(ctx context.Context) error {
-	contextLogger := log.FromContext(ctx)
+func (r *InstanceReconciler) reconcileReplicationSlots(ctx context.Context, cluster *v1.Cluster) error {
+	if isPrimary, _ := r.instance.IsPrimary(); !isPrimary {
+		return nil
+	}
 
+	contextLogger := log.FromContext(ctx)
+	contextLogger.Info("Creating replication slot")
 	err := r.instance.UpdateReplicationsSlot()
 	if err != nil {
 		contextLogger.Error(err, "updating replication slots")
 		return err
 	}
 
-	if r.instance.ReplicationSlots.Has(r.instance.PodName) {
-		return nil
-	}
+	for _, instance := range cluster.Status.InstancesStatus[pkgUtils.PodHealthy] {
+		if instance == cluster.Status.CurrentPrimary ||
+			r.instance.ReplicationSlots.Has(instance) {
+			continue
+		}
 
-	err = r.instance.CreateReplicationSlot(r.instance.PodName)
-	if err != nil {
-		return err
+		err = r.instance.CreateReplicationSlot(instance)
+		if err != nil {
+			return err
+		}
 	}
-
 	return nil
 }

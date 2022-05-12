@@ -237,13 +237,17 @@ func configureRecoveryConfFile(pgData string, primaryConnInfo string) (changed b
 // for PostgreSQL 12 and newer
 func configurePostgresAutoConfFile(pgData, primaryConnInfo, podName string) (changed bool, err error) {
 	targetFile := path.Join(pgData, "postgresql.auto.conf")
+	slotName, err := GetSlotName(podName)
+	if err != nil {
+		return false, err
+	}
 
 	options := map[string]string{
 		"restore_command": fmt.Sprintf(
 			"/controller/manager wal-restore --log-destination %s/%s.json %%f %%p",
 			postgres.LogPath, postgres.LogFileName),
 		"recovery_target_timeline": "latest",
-		"primary_slot_name":        podName,
+		"primary_slot_name":        slotName,
 	}
 
 	if primaryConnInfo != "" {

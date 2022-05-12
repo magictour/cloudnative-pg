@@ -44,21 +44,24 @@ type ReplicationSlotList struct {
 	Items []ReplicationSlot
 }
 
-var serialNumber = regexp.MustCompile(".*([0-9]+)$")
+var serialNumber = regexp.MustCompile(".*-(?P<wat>[0-9]+)$")
 
-// getSlotName return the slot name based in the current pod name
-func getSlotName(podName string) (string, error) {
-	match := serialNumber.FindAllString(podName, -1)
-	if len(match) != 1 {
+// GetSlotName return the slot name based in the current pod name
+func GetSlotName(podName string) (string, error) {
+	match := serialNumber.FindStringSubmatch(podName)
+	if len(match) != 2 {
 		return "", fmt.Errorf("can't parse podName looking for serial number")
 	}
-	slotName := fmt.Sprintf("%s%s", SlotPrefix, match[0])
+	slotName := fmt.Sprintf("%s%s", SlotPrefix, match[1])
 
 	return slotName, nil
 
 }
 
 func (rs *ReplicationSlotList) getSlotByPodName(podName string) *ReplicationSlot {
+	if rs == nil || len(rs.Items) == 0 {
+		return nil
+	}
 	for k, v := range rs.Items {
 		if v.PodName == podName {
 			return &rs.Items[k]
@@ -136,7 +139,7 @@ func (instance *Instance) CreateReplicationSlot(podName string) error {
 		return nil
 	}
 
-	slotName, err := getSlotName(podName)
+	slotName, err := GetSlotName(podName)
 	if err != nil {
 		return err
 	}
@@ -147,8 +150,7 @@ func (instance *Instance) CreateReplicationSlot(podName string) error {
 	}
 
 	query := fmt.Sprintf(
-		"SELECT * FROM pg_create_physical_replication_slot('%s')",
-		pq.QuoteIdentifier(slotName))
+		"SELECT * FROM pg_create_physical_replication_slot('%s')", slotName)
 	row := superUserDB.QueryRow(query)
 	if row.Err() != nil {
 		return err
@@ -170,7 +172,7 @@ func (instance *Instance) DeleteReplicationSlot(podName string) error {
 		return nil
 	}
 
-	slotName, err := getSlotName(podName)
+	slotName, err := GetSlotName(podName)
 	if err != nil {
 		return err
 	}
