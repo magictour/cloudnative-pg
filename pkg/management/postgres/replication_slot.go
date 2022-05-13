@@ -41,14 +41,16 @@ type ReplicationSlot struct {
 
 // ReplicationSlotList contains a list of replication slot
 type ReplicationSlotList struct {
-	Items []ReplicationSlot
+	ClusterName string `json:"clusterName,omitempty"`
+	Items       []ReplicationSlot
 }
 
-var serialNumber = regexp.MustCompile(".*-(?P<wat>[0-9]+)$")
+var podSerialNumber = regexp.MustCompile(".*-(?P<wat>[0-9]+)$")
+var slotSerialNumber = regexp.MustCompile(".*_(?P<wat>[0-9]+)$")
 
 // GetSlotName return the slot name based in the current pod name
 func GetSlotName(podName string) (string, error) {
-	match := serialNumber.FindStringSubmatch(podName)
+	match := podSerialNumber.FindStringSubmatch(podName)
 	if len(match) != 2 {
 		return "", fmt.Errorf("can't parse podName looking for serial number")
 	}
@@ -57,7 +59,15 @@ func GetSlotName(podName string) (string, error) {
 	return slotName, nil
 
 }
+func (rs *ReplicationSlotList) getPodNameBySlot(slotName string) (string, error) {
+	match := slotSerialNumber.FindStringSubmatch(slotName)
+	if len(match) != 2 {
+		return "", fmt.Errorf("can't parse slot name looking for serial number")
+	}
+	podName := fmt.Sprintf("%s-%s", rs.ClusterName, match[1])
 
+	return podName, nil
+}
 func (rs *ReplicationSlotList) getSlotByPodName(podName string) *ReplicationSlot {
 	if rs == nil || len(rs.Items) == 0 {
 		return nil
@@ -82,7 +92,9 @@ func (instance *Instance) getCurrentReplicationSlot() (*ReplicationSlotList, err
 		return nil, err
 	}
 
-	var replicationSlots ReplicationSlotList
+	replicationSlots := ReplicationSlotList{
+		ClusterName: instance.ClusterName,
+	}
 
 	rows, err := superUserDB.Query(
 		`SELECT
@@ -110,6 +122,11 @@ WHERE NOT temporary AND slot_type = 'physical'
 		if err != nil {
 			return nil, err
 		}
+		slot.PodName, err = replicationSlots.getPodNameBySlot(slot.SlotName)
+		if err != nil {
+			return nil, err
+		}
+
 		replicationSlots.Items = append(replicationSlots.Items, slot)
 	}
 

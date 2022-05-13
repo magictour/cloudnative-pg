@@ -105,11 +105,6 @@ func (r *InstanceReconciler) Reconcile(
 	// Reconcile PostgreSQL instance parameters
 	r.reconcileInstance(cluster)
 
-	// Reconcile replication slots
-	if err = r.reconcileReplicationSlots(ctx, cluster); err != nil {
-		contextLogger.Error(err, "while reconciling replication slot")
-	}
-
 	// Refresh the cache
 	requeue := r.updateCacheFromCluster(ctx, cluster)
 
@@ -157,6 +152,11 @@ func (r *InstanceReconciler) Reconcile(
 	if r.instance.IsServerHealthy() != nil {
 		contextLogger.Info("Instance is still down, will retry in 1 second")
 		return reconcile.Result{RequeueAfter: time.Second}, nil
+	}
+
+	// Reconcile replication slots
+	if err = r.reconcileReplicationSlots(ctx, cluster); err != nil {
+		contextLogger.Error(err, "while reconciling replication slot")
 	}
 
 	restarted, err := r.reconcileOldPrimary(ctx, cluster)
